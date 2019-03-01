@@ -1,0 +1,16 @@
+/Debug
+/Release
+/zippast
+/x64
+/.vs
+/*.user
+/a.out
+*.zip
+*.exe
+*.bmp
+*.wav
+*.bin
+*.dat
+*.html
+*.txt
+*.zip-email
