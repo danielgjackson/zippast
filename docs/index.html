@@ -5,8 +5,19 @@
     <title>Zip-Past</title>
     <link rel="icon" href="data:;base64,=">
     <style>
+      html {
+        height: 100%;        
+      }
+
       body {
         font-family: sans-serif;
+        /* Resize so body file drag and drop target fills viewport */
+        height: 100%;
+        width: 100%;
+        position: absolute;
+        margin:0;
+        padding: 1em;
+        box-sizing: border-box;
       }
 
       #output {
@@ -38,7 +49,7 @@
 
     <h2>Online Tool</h2>
 
-    <p>This page is a browser-based version of the tool (data stays locally in your browser).  Press <em>Choose file</em> to select a local .ZIP or executable file from your computer, then press <em>Run and Download Result</em> to run the <em>zippast</em> tool, and download the resulting file.</em></p>
+    <p>This page is a browser-based version of the tool (data stays locally in your browser).  Drag a .ZIP or executable file from your computer to this page (or press <em>Choose file</em> to select), then press <em>Run and Download Result</em> to run the <em>zippast</em> tool, and download the resulting file.</em></p>
 
     <div class="controls">
       <label>
@@ -98,11 +109,10 @@
         }
       };
 
-
+      let ready = false;
+      let inputContents = null;
       let inputFilename = 'input.zip';
       let outputFilename = inputFilename + '-email';
-      let inputContents = null;
-      let outputContents = null;
 
       Module.preRun.push(function() {
         console.log('PRE-RUN');
@@ -112,6 +122,7 @@
 
       Module.onRuntimeInitialized = function() {
         console.log('INITIALIZED');
+        ready = true;
         document.querySelector('#file').disabled = false;
       }
 
@@ -132,6 +143,14 @@
       }
 
       function run() {
+        // Prevent changes while running
+        ready = false;
+        document.querySelector('#file').disabled = true;
+        document.querySelector('#run').disabled = true;
+
+        Module.setStatus('Creating input: ' + inputFilename + ' (' + inputContents.byteLength + ')');
+        FS.writeFile(inputFilename, inputContents);
+
         const mode = document.querySelector('#mode').value;
         const arguments = [mode, inputFilename];
         Module.setStatus('Executing: ' + JSON.stringify(arguments));
@@ -139,33 +158,72 @@
         Module.setStatus('Executed: ' + result);
 
         if (result == 0) {
-          outputContents = FS.readFile(outputFilename);
+          const outputContents = FS.readFile(outputFilename);
           downloadFile(outputContents, outputFilename); // 'application/zip'
         } else {
           Module.printErr('ERROR: Unexpected non-zero return code.');
         }
 
+        try {
+          FS.unlink(inputFilename);
+        } catch (e) {
+          Module.printErr('ERROR: Problem removing input file: ' + inputFilename);
+        }
+
+        try {
+          FS.unlink(outputFilename);
+        } catch (e) {
+          Module.printErr((result == 0 ? 'ERROR' : 'NOTE') + ': Problem removing output file: ' + outputFilename);
+        }
+
         Module.setStatus('Finished');
         Module.print('---');
+
+        // Allow setting new file
+        ready = true;
+        document.querySelector('#file').disabled = false;
+        document.querySelector('#file').value = null;
       }
 
-      function fileChange(event) {
-        const fileList = event.target.files;
-        const file = fileList[0];
+      function setFile(file) {
         const reader = new FileReader();
         reader.onload = async function(event) {
           inputFilename = file.name;
-          outputFilename = inputFilename + '-email';
+          outputFilename = inputFilename + '-email';  // actual output filename reset by program's text output
           inputContents = new Uint8Array(event.target.result);
-          console.log('CREATING-INPUT: ' + inputContents.byteLength + ' bytes');
-          FS.writeFile(inputFilename, inputContents);
+          console.log('SETTING-INPUT: (' + inputContents.byteLength + ' bytes) -- ' + inputFilename);
           document.querySelector('#run').disabled = false;
         };
         reader.readAsArrayBuffer(file);
       }
 
+      function fileChange(event) {
+        const fileList = event.target.files;
+        const file = fileList[0];
+        setFile(file);
+      }
+
       document.querySelector('#run').addEventListener('click', run);
       document.querySelector('#file').addEventListener('change', fileChange);
+
+      document.body.addEventListener('dragover', function(event) {
+        if (ready) {
+          event.preventDefault();
+        }
+      });
+
+      document.body.addEventListener('drop', function(event) {
+        if (!ready) return;
+      
+        if (ready && event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+          event.preventDefault();
+          
+          const file = event.dataTransfer.files[0];
+          document.querySelector('#file').files = event.dataTransfer.files;
+          setFile(file);
+        }
+
+      });
 
       Module.setStatus('Downloading...');
       window.onerror = function(event) {
