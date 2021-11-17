@@ -22,7 +22,7 @@ This tool does this for you.
 
 Browser-based online version of the tool:
 
-  [danielgjackson.github.io/zippast](https://danielgjackson.github.io/zippast/)
+* [danielgjackson.github.io/zippast](https://danielgjackson.github.io/zippast/)
 
 Command-line usage:
 
