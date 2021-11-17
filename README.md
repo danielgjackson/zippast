@@ -20,7 +20,7 @@ This tool does this for you.
 
 **IMPORTANT:** Please do not use this tool for evil!
 
-Browser-based online version of the tool:
+A browser-based version of the tool (data stays locally in your browser) is available at:
 
 * [danielgjackson.github.io/zippast](https://danielgjackson.github.io/zippast/)
 
