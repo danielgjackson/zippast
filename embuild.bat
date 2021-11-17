@@ -7,4 +7,4 @@ if exist ..\emsdk\emsdk_env.bat call ..\emsdk\emsdk_env
 
 ::: -O2
 
-emcc zippast.c -s EXPORTED_RUNTIME_METHODS=["callMain"] -o docs/zippast.html
+emcc zippast.c -s ALLOW_MEMORY_GROWTH=1 -s EXPORTED_RUNTIME_METHODS=["callMain"] -o docs/zippast.html
