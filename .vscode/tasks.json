@@ -1,0 +1,27 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "StartServer",
+            "type": "process",
+            "command": "${input:StartServer}"
+        },
+        {
+            "label": "StopServer",
+            "type": "process",
+            "command": "${input:StopServer}"
+        }
+    ],
+    "inputs": [
+        {
+            "id": "StartServer",
+            "type": "command",
+            "command": "extension.liveServer.goOnline"
+        },
+        {
+            "id": "StopServer",
+            "type": "command",
+            "command": "extension.liveServer.goOffline"
+        }
+    ]
+}

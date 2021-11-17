@@ -1,0 +1,10 @@
+{
+    "liveServer.settings.root": "/docs",
+    "liveServer.settings.NoBrowser": true,
+    "cSpell.words": [
+        "zippast"
+    ],
+    //"liveServer.settings.ChromeDebuggingAttachment": true,
+    //"liveServer.settings.CustomBrowser": "chrome",
+    //"liveServer.settings.host": "localhost",
+}

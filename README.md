@@ -20,7 +20,11 @@ This tool does this for you.
 
 **IMPORTANT:** Please do not use this tool for evil!
 
-Usage:
+Browser-based online version of the tool:
+
+  [danielgjackson.github.io/zippast](https://danielgjackson.github.io/zippast/)
+
+Command-line usage:
 
 ```bash
 zippast inputfile

@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Zip-Past</title>
+    <link rel="icon" href="data:;base64,=">
+    <style>
+      body {
+        font-family: sans-serif;
+      }
+
+      #output {
+        display: block;
+        font-family: monospace;
+        white-space: pre;
+        overflow-y: auto;
+        max-height: 200px;
+      }
+
+      .controls {
+        margin-top: 1em;
+        margin-bottom: 1em;
+      }
+      
+      .statusLine {
+        margin-bottom: 1em;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Zip-Past</h1>
+
+    <p>This tool masks a .zip file that might otherwise be blocked, e.g. prevented from being an attachment to an email as it contains an executable file.</p>
+    
+    <p><strong>IMPORTANT:</strong> Please do not use this tool for evil!</p>
+
+    <p>See: <a href="https://github.com/danielgjackson/zippast#readme">Zip-Past</a> for a more detailed explanation, including how it works.</p>
+
+    <h2>Online Tool</h2>
+
+    <p>This page is a web-based version of the tool.  Press <em>Choose file</em> to select a local .ZIP or executable file from your computer, then press <em>Run and Download Result</em> to run the <em>zippast</em> tool, and download the resulting file.</em></p>
+
+    <div class="controls">
+      <label>
+        <span id="filename">Source File: </span>
+        <input type="file" id="file" disabled>
+      </label>
+      <label>Mode:
+        <select id="mode">
+          <option value="-mode:standard">.zip renamed (Default)</option>
+          <option value="-mode:bmp">.bmp bitmap image</option>
+          <option value="-mode:wav">.wav wave sound</option>
+        </select>
+      </label>
+      <button id="run" disabled>Run and Download Result</button>
+    </div>
+
+    <div class="status">
+      <div class="statusLine"><label>Status:</label> <span id="statusText">Not Ready</span></div>
+      <output id="output">-</output>
+    </div>
+    
+    <script type='text/javascript'>
+      const outputElement = document.getElementById('output');
+      outputElement.innerText = '';
+
+      var Module = {
+        preRun: [],
+        postRun: [],
+        print: function(text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          console.log(text);
+          outputElement.value += text + '\n';
+          outputElement.scrollTop = outputElement.scrollHeight;
+        },
+        printErr: function(text) {
+          if (arguments.length > 1) text = Array.prototype.slice.call(arguments).join(' ');
+          if (text.startsWith("ZIPPAST: Writing: ")) {
+            outputFilename = text.substr(18);
+            console.log('OUTPUT-FILENAME: ' + outputFilename);
+          }
+          console.log(text);
+          outputElement.value += text + '\n';
+          outputElement.scrollTop = outputElement.scrollHeight;
+        },
+        canvas: (function() {
+          return null;
+        })(),
+        setStatus: function(text) {
+          if (text == '') text = 'Ready';
+          console.log('STATUS: ' + text)
+          document.querySelector('#statusText').innerText = text;
+        },
+        totalDependencies: 0,
+        monitorRunDependencies: function(left) {
+          this.totalDependencies = Math.max(this.totalDependencies, left);
+          Module.setStatus(left ? 'Preparing... (' + (this.totalDependencies-left) + '/' + this.totalDependencies + ')' : 'All downloads complete.');
+        }
+      };
+
+
+      let inputFilename = 'input.zip';
+      let outputFilename = inputFilename + '-email';
+      let inputContents = null;
+      let outputContents = null;
+
+      Module.preRun.push(function() {
+        console.log('PRE-RUN');
+      });
+
+      //Module.postRun.push(afterExecution);
+
+      Module.onRuntimeInitialized = function() {
+        console.log('INITIALIZED');
+        document.querySelector('#file').disabled = false;
+      }
+
+      Module.noInitialRun = true;
+      //Module.noExitRuntime = true;
+
+      function downloadFile(content, filename = 'data.bin', mime = 'application/octet-stream') {
+        const a = document.createElement('a');
+        a.download = filename;
+        a.href = URL.createObjectURL(new Blob([content], {type: mime}));
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(a.href);
+        }, 2000);
+      }
+
+      function run() {
+        const mode = document.querySelector('#mode').value;
+        const arguments = [mode, inputFilename];
+        Module.setStatus('Executing: ' + JSON.stringify(arguments));
+        const result = Module.callMain(arguments);
+        Module.setStatus('Executed: ' + result);
+
+        if (result == 0) {
+          outputContents = FS.readFile(outputFilename);
+          downloadFile(outputContents, outputFilename); // 'application/zip'
+        } else {
+          Module.printErr('ERROR: Unexpected non-zero return code.');
+        }
+
+        Module.setStatus('Finished');
+        Module.print('---');
+      }
+
+      function fileChange(event) {
+        const fileList = event.target.files;
+        const file = fileList[0];
+        const reader = new FileReader();
+        reader.onload = async function(event) {
+          inputFilename = file.name;
+          outputFilename = inputFilename + '-email';
+          inputContents = new Uint8Array(event.target.result);
+          console.log('CREATING-INPUT: ' + inputContents.byteLength + ' bytes');
+          FS.writeFile(inputFilename, inputContents);
+          document.querySelector('#run').disabled = false;
+        };
+        reader.readAsArrayBuffer(file);
+      }
+
+      document.querySelector('#run').addEventListener('click', run);
+      document.querySelector('#file').addEventListener('change', fileChange);
+
+      Module.setStatus('Downloading...');
+      window.onerror = function(event) {
+        Module.setStatus('Exception thrown, see JavaScript console');
+        Module.setStatus = function(text) {
+          if (text) Module.printErr('[post-exception status] ' + text);
+        };
+      };
+    </script>
+    <script async type="text/javascript" src="zippast.js"></script>
+  </body>
+</html>

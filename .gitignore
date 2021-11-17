@@ -11,6 +11,6 @@
 *.wav
 *.bin
 *.dat
-*.html
 *.txt
 *.zip-email
+docs/zippast.html
