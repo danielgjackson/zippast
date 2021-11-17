@@ -107,7 +107,7 @@ int WavWriteHeader(void *buffer, unsigned int bitsPerSample, unsigned int chans,
 	return headerSize;
 }
 
-unsigned char *readFile(const unsigned char *filename, size_t *outLength)
+unsigned char *readFile(const char *filename, size_t *outLength)
 {
 	FILE *fp = fopen(filename, "rb");
 	if (fp == NULL) { perror("ERROR: Problem opening input file"); return NULL; }
@@ -115,7 +115,7 @@ unsigned char *readFile(const unsigned char *filename, size_t *outLength)
 	long length = ftell(fp);
 	if (length < 0) { perror("ERROR: Problem determining file length"); fclose(fp); return NULL; }
 	if (fseek(fp, 0, SEEK_SET) != 0) { perror("ERROR: Problem seeking input file to start"); fclose(fp); return NULL; }
-	char *buffer = malloc((size_t)length);
+	unsigned char *buffer = (unsigned char *)malloc((size_t)length);
 	if (buffer == NULL) { perror("ERROR: Problem allocating memory for input file"); fclose(fp); return NULL; }
 	size_t lengthRead = fread(buffer, 1, (size_t)length, fp);
 	fclose(fp);
@@ -568,7 +568,7 @@ bool zipOffsets(unsigned char **data, size_t *length, size_t headerSize, size_t 
 }
 
 
-char *generateBmp(size_t contentsLength, size_t *outHeaderSize)
+unsigned char *generateBmp(size_t contentsLength, size_t *outHeaderSize)
 {
 	// Fixed width and bits-per-pixel
 	int width = 1024;
@@ -590,7 +590,7 @@ char *generateBmp(size_t contentsLength, size_t *outHeaderSize)
 	return header;
 }
 
-char *generateWav(size_t contentsLength, size_t *outHeaderSize)
+unsigned char *generateWav(size_t contentsLength, size_t *outHeaderSize)
 {
 	unsigned int bitsPerSample = 8;
 	unsigned int chans = 1;
@@ -692,7 +692,7 @@ int process(const char *inputFile, const char *outputFile, HeaderMode mode, size
 	}
 
 	// Convert ZIP file
-	if (zipConvert)
+	if (convert)
 	{
 		if (!zipConvert(&contents, &contentsLength))
 		{
@@ -754,17 +754,17 @@ int process(const char *inputFile, const char *outputFile, HeaderMode mode, size
 	{
 		const char *data; // = "\x1A";	// DOS EOF
 		data = HEADER_STRING;
-		header = strdup(data);
-		for (char *p = header; *p != 0; p++) *p &= 0x7f;	// clear top bit to allow easier control codes
-		headerSize = strlen(header);
+		header = (unsigned char *)strdup(data);
+		for (unsigned char *p = header; *p != 0; p++) *p &= 0x7f;	// clear top bit to allow easier control codes
+		headerSize = strlen((char *)header);
 	}
 	else if (mode == MODE_BYTE)
 	{
 		const char *data; // = "\x1A";	// DOS EOF
 		data = HEADER_STRING;
-		header = strdup(data);
-		for (char *p = header; *p != 0; p++) *p &= 0x7f;	// clear top bit to allow easier control codes
-		headerSize = strlen(header);
+		header = (unsigned char *)strdup(data);
+		for (unsigned char *p = header; *p != 0; p++) *p &= 0x7f;	// clear top bit to allow easier control codes
+		headerSize = strlen((char *)header);
 	}
 	else  // mode == MODE_NONE
 	{
@@ -836,7 +836,7 @@ const char *replaceExtension(const char *inputFile, const char *newExt)
 int run(int argc, char *argv[])
 {
 	bool help = false;
-	bool zipConvert = false;
+	bool convert = false;
 	int positional = 0;
 	const char *inputFile = NULL;
 	const char *outputFile = NULL;
@@ -863,8 +863,8 @@ int run(int argc, char *argv[])
 		else if (!strcmp(argv[i], "-mode:html")) { mode = MODE_HTML; }
 		else if (!strcmp(argv[i], "-mode:standard")) { mode = MODE_STANDARD; }
 		else if (!strcmp(argv[i], "-mode:byte")) { mode = MODE_BYTE; }
-		else if (!strcmp(argv[i], "-zip:keep")) { zipConvert = false; }
-		else if (!strcmp(argv[i], "-zip:convert")) { zipConvert = true; }
+		else if (!strcmp(argv[i], "-zip:keep")) { convert = false; }
+		else if (!strcmp(argv[i], "-zip:convert")) { convert = true; }
 		else if (argv[i][0] == '-')
 		{
 			fprintf(stderr, "ERROR: Unsupported argument: %s\n", argv[i]);
@@ -911,7 +911,7 @@ int run(int argc, char *argv[])
 		if (outputFile == NULL) return 1;
 	}
 
-	int returnValue = process(inputFile, outputFile, mode, commentPad, zipConvert);
+	int returnValue = process(inputFile, outputFile, mode, commentPad, convert);
 	return returnValue;
 }
 
