@@ -30,7 +30,7 @@ Command-line usage:
 zippast inputfile
 ```
 
-...where the input file can be a `.zip` (it will be `.zip` stored if it's not already a `.zip` file), and the output file is of the same name with the extension `.zip-email`. The recipient must rename the file to `.zip` to access the contents as before.
+...where the input file can be a `.zip` (it will be `.zip` stored if it's not already a `.zip` file), and the output file is of the same name with the extension `.zip-email`. The recipient must typically rename the file extension to `.zip` to access the contents as before.
 
 Use the flag `-mode:bmp` to create a valid (but nonsense) bitmap image.  
 
