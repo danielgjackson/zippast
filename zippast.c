@@ -201,11 +201,11 @@ int ZIPWriterStartFile(zipwriter_t *context, zipwriter_file_t *file, const char 
 	// Calculate extra field length to match alignment
 	if (alignment > 0)
 	{
-		unsigned long contentOffset = file->offset + 30 + strlen(file->filename);
-		unsigned long alignedOffset = (contentOffset + alignment - 1) / alignment * alignment;
+		size_t contentOffset = file->offset + 30 + strlen(file->filename);
+		size_t alignedOffset = (contentOffset + alignment - 1) / alignment * alignment;
 		if (contentOffset != alignedOffset)
 		{
-			file->extraFieldLength = alignedOffset - contentOffset;
+			file->extraFieldLength = (int)(alignedOffset - contentOffset);
 		}
 	}
 
@@ -254,14 +254,14 @@ int ZIPWriterStartFile(zipwriter_t *context, zipwriter_file_t *file, const char 
 }
 
 // Update the context with the ZIP file data
-void ZIPWriterFileContent(zipwriter_t *context, const void *data, int length)
+void ZIPWriterFileContent(zipwriter_t *context, const void *data, size_t length)
 {
 	// Update CRC
 	context->currentFile->crc = crc32(context->currentFile->crc, data, length);
 
 	// Update file and archive lengths
-	context->currentFile->length += length;
-	context->length += length;
+	context->currentFile->length += (unsigned long)length;
+	context->length += (unsigned long)length;
 }
 
 // Generate the ZIP local header for a file
@@ -576,7 +576,7 @@ unsigned char *generateBmp(size_t contentsLength, size_t *outHeaderSize)
 	int span = 4 * ((width * ((bpp + 7) / 8) + 3) / 4);
 
 	// Determine height from file size
-	int height = ((contentsLength + span - 1) / span);
+	int height = (((int)contentsLength + span - 1) / span);
 	size_t fileSize = BMP_WRITER_SIZE_HEADER + height * span;
 	size_t headerSize = fileSize - contentsLength;
 	fprintf(stderr, "ZIPPAST: BMP: Read %u, Header %u, Total %u, Image %ux%u (span %u).\n", (unsigned int)contentsLength, (unsigned int)headerSize, (unsigned int)(contentsLength + headerSize), width, height, span);
@@ -597,7 +597,7 @@ unsigned char *generateWav(size_t contentsLength, size_t *outHeaderSize)
 	unsigned int freq = 44100;
 	unsigned int bytesPerSample = (bitsPerSample + 7) / 8;
 	unsigned int align = bytesPerSample * chans;
-	unsigned int numSamples = ((contentsLength + align - 1) / align) * align;
+	unsigned int numSamples = (((unsigned int)contentsLength + align - 1) / align) * align;
 	if (numSamples & 1) { numSamples++; }	// instead of trailing padding byte (as we are 1-channel, 8-bit samples)
 	unsigned int dataSize = numSamples * chans * bytesPerSample;
 	//if (dataSize & 1) dataSize++;		// trailing padding byte
@@ -612,6 +612,77 @@ unsigned char *generateWav(size_t contentsLength, size_t *outHeaderSize)
 	memset(header, 0, headerSize);
 	WavWriteHeader(header, bitsPerSample, chans, freq, numSamples);
 	*outHeaderSize = headerSize;
+	return header;
+}
+
+unsigned char *generateHtml(size_t contentsLength, size_t *outHeaderSize)
+{
+	const char *htmlHeader =
+		"<!doctype html>\n"
+		"<html>\n"
+		"<head>\n"
+		"<meta charset='ISO-8859-1'><!-- or windows-1252 -->\n"
+		"</head>\n"
+		"<body>\n"
+		"<p><a href='' download='file.zip' type='application/zip' target='iframe'>Download</a> - right-click and <em>Save link as</em>, ensure <code>.zip</code> is added to the file name, <em>Save</em>, then open it.</p>\n"
+		"<iframe src='about:blank' name='iframe' hidden></iframe>\n"
+		"</body>\n"
+		"<script>\n"
+		"\n"
+		"// Check for failed download\n"
+		"const iframe = document.querySelector('IFRAME');\n"
+		"let firstLoad = true;\n"
+		"iframe.addEventListener('load', function() {\n"
+		"  if (!firstLoad) {\n"
+		"    console.error('download failed');\n"
+		"  }\n"
+		"  firstLoad = false;\n"
+		"});\n"
+		"iframe.src = 'about:blank';\n"
+		"  \n"
+		"document.addEventListener('DOMContentLoaded', function () {\n"
+		"  // Chrome does not use the anchor 'download' attribute to name the file, so this is to prevent a new tab (or loop when auto-clicking)\n"
+		"  if (window.top != window.self) return;\n"
+		"\n"
+		"  // Find filename and .zip version\n"
+		"  const pathname = window.location.pathname;\n"
+		"  const srcFilename = pathname.slice(pathname.lastIndexOf('/') + 1);\n"
+		"  const filename = ((srcFilename.slice(-5).toLowerCase() == '.html') ? srcFilename.slice(0, -5) : srcFilename) + '.zip';\n"
+		"  \n"
+		"  // Set the anchor tag download attribute (Chrome will ignore this on the local filesystem)\n"
+		"  const anchorElement = document.querySelector('A');\n"
+		"  anchorElement.setAttribute('href', srcFilename);\n"
+		"  anchorElement.setAttribute('download', filename);\n"
+		"  \n"
+		"  // It would be nice to download the binary contents directly, but the HTML parsing rules mangle the data (e.g. normalize CRLFs)\n"
+		"  // document.querySelector('PLAINTEXT');\n"
+		"\n"
+		"  // Some browsers will not use the 'download' name from 'file:' URLs (but will from 'blob:' URLs)\n"
+		"  // If allowed to fetch from 'file:' URLs (e.g. Firefox), get the file contents and use this as a blob\n"
+		"  const fetchUrl = anchorElement.href;\n"
+		"  fetch(fetchUrl)\n"
+		"  .then((response) => response.blob())\n"
+		"  .then((blob) => {\n"
+		"    const blobUrl = URL.createObjectURL(blob);\n"
+		"    anchorElement.setAttribute('href', blobUrl);\n"
+		"    anchorElement.removeAttribute('target');\n"
+		"  })\n"
+		"  .catch((e) => {\n"
+		"    console.error(e);\n"
+		"  });\n"
+		"\n"
+		"  // Automatically click the link to trigger the download on some browsers\n"
+		"  anchorElement.click();\n"
+		"});\n"
+		"</script>\n"
+		"<PLAINTEXT HIDDEN>"
+	;
+	
+	size_t headerSize = strlen(htmlHeader);
+	unsigned char *header = (unsigned char *)malloc(headerSize);
+	if (header == NULL) { perror("ERROR: Problem allocating header buffer"); return NULL; }
+	*outHeaderSize = headerSize;
+	memcpy(header, htmlHeader, headerSize);
 	return header;
 }
 
@@ -714,7 +785,7 @@ int process(const char *inputFile, const char *outputFile, HeaderMode mode, size
 			return 1;
 		}
 		memset(comment, ' ', commentPad);
-		const int commentStringLength = strlen(commentString);
+		const size_t commentStringLength = strlen(commentString);
 		if (commentStringLength > 0)
 		{
 			for (size_t i = 0; i < commentPad; i++)
@@ -749,6 +820,9 @@ int process(const char *inputFile, const char *outputFile, HeaderMode mode, size
 	else if (mode == MODE_WAV)
 	{
 		header = generateWav(contentsLength + commentPad, &headerSize);
+	}
+	else if (mode == MODE_HTML) {
+		header = generateHtml(contentsLength + commentPad, &headerSize);
 	}
 	else if (mode == MODE_STANDARD)
 	{
