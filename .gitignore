@@ -15,3 +15,5 @@
 docs/zippast.html
 /build
 /*.obj
+/_*
+.DS_Store

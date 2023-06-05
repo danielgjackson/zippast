@@ -2,7 +2,17 @@
     "liveServer.settings.root": "/docs",
     "liveServer.settings.NoBrowser": true,
     "cSpell.words": [
-        "zippast"
+        "cksize",
+        "crcu",
+        "danielgjackson",
+        "EOCD",
+        "Geldreich",
+        "Malbrain's",
+        "MHTML",
+        "miniz",
+        "RGBX",
+        "zippast",
+        "zipwriter"
     ],
     //"liveServer.settings.ChromeDebuggingAttachment": true,
     //"liveServer.settings.CustomBrowser": "chrome",

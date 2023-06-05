@@ -6,8 +6,10 @@
 // * end of file comment to push EOCD out of last 8kiB: >=8171 bytes ('-comment 8171')
 // * output file must not have the extension '.zip' (-> .bin)
 
-#define HEADER_STRING  "Rename file extension to .ZIP\r\n\x1A"	// 0x1A=EOF (for TYPE, etc.)
-#define COMMENT_STRING "\x80Rename file extension to .ZIP\r\n"	// top-bit is cleared to start with NUL
+#define TEXT_STRING  "Rename file extension to .ZIP\r\n"
+#define HEADER_STRING  TEXT_STRING "\x1A"	// 0x1A=EOF (for TYPE, etc.)
+#define COMMENT_STRING "\x80" TEXT_STRING	// top-bit is cleared to start with NUL
+#define MULTIPART_BOUNDARY "--" "MultipartBoundary" "--" "zippast" "----"
 
 #ifdef _WIN32
 #define _CRT_SECURE_NO_WARNINGS
@@ -24,12 +26,14 @@
 #endif
 
 typedef enum {
-	MODE_STANDARD,
-	MODE_NONE,
-	MODE_BMP,
-	MODE_WAV,
-	MODE_HTML,
-	MODE_BYTE,
+	MODE_STANDARD,	// .zip-email with default pre/post padding
+	MODE_NONE,		// pass-through (convert headers if requested)
+	MODE_BMP,		// .bmp valid (nonsense) image
+	MODE_WAV,		// .wav valid (nonsense) sound file
+	MODE_EML,		// (not working) .eml (email) with attachment -- the offsets need fixing (e.g. duplicate central directory?)
+	MODE_MHTML,		// (not working) .mht (MHTML) document with linked attachment -- self-download does not work (yet?), and the offsets will need fixing (e.g. duplicate central directory?)
+	MODE_HTML,		// (not working) .html -- self-download does not work as HTML parsers normalize/remove certain bytes (e.g. CR/LF and NULL)
+	MODE_BYTE,		// .bin with default pre/post padding
 } HeaderMode;
 
 // Write a bitmap header, pass negative height for top-down, works for 1/2/4/8/16/32-bit, 
@@ -450,7 +454,7 @@ bool zipConvert(unsigned char **data, size_t *length)
 	{
 		fileinfo_t *file = &files[i];
 
-		// Eek, O(n^2) algorithm, should sort entries (central direcory entries may unordered).
+		// Eek, O(n^2) algorithm, should sort entries (central directory entries may unordered).
 		int offset = 0;
 		for (int j = 0; j < numRecords; j++)
 		{
@@ -461,7 +465,7 @@ bool zipConvert(unsigned char **data, size_t *length)
 		}
 
 		// Adjust central directory local file offset
-fprintf(stderr, "INFO: Converting entry %d: asjusting by offset %u (altering this entry: %s)\n", i + 1, (unsigned int)offset, file->patch ? "yes" : "no");
+fprintf(stderr, "INFO: Converting entry %d: adjusting by offset %u (altering this entry: %s)\n", i + 1, (unsigned int)offset, file->patch ? "yes" : "no");
 		ZIP_WRITE_DWORD(*data + file->entry + 42, file->localFile + offset);
 		if (file->patch)
 		{
@@ -612,6 +616,142 @@ unsigned char *generateWav(size_t contentsLength, size_t *outHeaderSize)
 	memset(header, 0, headerSize);
 	WavWriteHeader(header, bitsPerSample, chans, freq, numSamples);
 	*outHeaderSize = headerSize;
+	return header;
+}
+
+// TODO: The attached .ZIP file has incorrect offsets in the central directory -- try to solve this with a second central directory within the main part of the .ZIP file
+unsigned char *generateEml(size_t contentsLength, size_t *outHeaderSize, unsigned char *comment, size_t commentPad)
+{
+	const char *emlHeader =
+		"From: <zippast>\r\n"
+		//"Snapshot-Content-Location: zippast\r\n"
+		"Subject: ZIP File Attached\r\n"
+		//"Date: Thu, 01 Jan 1970 00:00:00 +0000\r\n"
+		//"MIME-Version: 1.0\r\n"
+		"Content-Type: multipart/related; type=\"text/html\"; boundary=\"" MULTIPART_BOUNDARY "\"\r\n"
+		"\r\n"
+		"--" MULTIPART_BOUNDARY "\r\n"
+		"Content-Type: text/html\r\n"
+		//"Content-ID: <_index>\r\n"
+		//"Content-Transfer-Encoding: binary\r\n"
+		//"Content-Location: index.html\r\n"
+		"\r\n"
+		"<!doctype html>\r\n"
+		"<html>\r\n"
+		"<head>\r\n"
+		"<meta charset='ISO-8859-1'>\r\n"
+		"</head>\r\n"
+		"<body>\r\n"
+		"Please open the attachment (or rename this .eml file to .zip)\r\n"
+		"</body>\r\n"
+		"</html>\r\n"
+		"\r\n"
+		"--" MULTIPART_BOUNDARY "\r\n"
+		"Content-Type: application/zip\r\n"
+		//"Content-ID: <_zip>\r\n"
+		"Content-Disposition: attachment; filename=\"file.zip\"\r\n"
+		"Content-Transfer-Encoding: binary\r\n"
+		"Content-Length: %u\r\n"
+		"\r\n"
+	;
+
+	const char *emlFooterStart = ""
+		// "\r\n"
+		// "\r\n"
+		// "--" MULTIPART_BOUNDARY "\r\n"
+		// "Content-Type: text/plain\r\n"
+		// "\r\n"
+	;
+	const char *emlFooterEnd =
+		//"\r\n"
+		//"\r\n"
+		"--" MULTIPART_BOUNDARY "--\r\n"
+	;
+
+	if (commentPad >= strlen(emlFooterStart)) {
+		memcpy(comment, emlFooterStart, strlen(emlFooterStart));
+		size_t ofs = strlen(emlFooterStart), count = commentPad - strlen(emlFooterStart), mod = strlen(TEXT_STRING);
+		if (mod > 0) {
+			for (size_t i = 0; i < count; i++) {
+				comment[ofs + i] = TEXT_STRING[i % mod];
+			}
+		}
+	}
+	if (commentPad >= strlen(emlFooterStart) + strlen(emlFooterEnd)) {
+		memcpy(comment + commentPad - strlen(emlFooterEnd), emlFooterEnd, strlen(emlFooterEnd));
+	}
+
+	unsigned char *header = (unsigned char *)malloc(strlen(emlHeader) + 512);
+	if (header == NULL) { perror("ERROR: Problem allocating header buffer"); return NULL; }
+	*outHeaderSize = sprintf((char *)header, emlHeader, contentsLength);
+	return header;
+}
+
+// TODO: Find a way of downloading the attached file (e.g. represent as a BMP and render to canvas if not tainted?), also solve the offset issue as with .eml files (e.g. a second central directory?)
+unsigned char *generateMhtml(size_t contentsLength, size_t *outHeaderSize, unsigned char *comment, size_t commentPad)
+{
+	const char *mhtmlHeader =
+		//"From: <zippast>\r\n"
+		//"Snapshot-Content-Location: zippast\r\n"
+		//"Subject: ZIP File Attached\r\n"
+		//"Date: Thu, 01 Jan 1970 00:00:00 +0000\r\n"
+		//"MIME-Version: 1.0\r\n"
+		"Content-Type: multipart/related; type=\"text/html\"; boundary=\"" MULTIPART_BOUNDARY "\"\r\n"
+		"\r\n"
+		"--" MULTIPART_BOUNDARY "\r\n"
+		"Content-Type: text/html\r\n"
+		//"Content-ID: <_index>\r\n"
+		//"Content-Transfer-Encoding: binary\r\n"
+		//"Content-Location: index.html\r\n"
+		"\r\n"
+		"<!doctype html>\r\n"
+		"<html>\r\n"
+		"<head>\r\n"
+		"<meta charset='ISO-8859-1'>\r\n"
+		"</head>\r\n"
+		"<body>\r\n"
+		"<embed type='application/zip' src='cid:_zip'>...</embed>\r\n"
+		"</body>\r\n"
+		"</html>\r\n"
+		"\r\n"
+		"--" MULTIPART_BOUNDARY "\r\n"
+		"Content-Type: application/zip\r\n"
+		"Content-ID: <_zip>\r\n"
+		"Content-Disposition: attachment; filename=\"file.zip\"\r\n"
+		"Content-Transfer-Encoding: binary\r\n"
+		"Content-Length: %u\r\n"
+		"\r\n"
+	;
+
+	const char *mhtmlFooterStart = ""
+		// "\r\n"
+		// "\r\n"
+		// "--" MULTIPART_BOUNDARY "\r\n"
+		// "Content-Type: text/plain\r\n"
+		// "\r\n"
+	;
+	const char *mhtmlFooterEnd =
+		//"\r\n"
+		//"\r\n"
+		"--" MULTIPART_BOUNDARY "--\r\n"
+	;
+
+	if (commentPad >= strlen(mhtmlFooterStart)) {
+		memcpy(comment, mhtmlFooterStart, strlen(mhtmlFooterStart));
+		size_t ofs = strlen(mhtmlFooterStart), count = commentPad - strlen(mhtmlFooterStart), mod = strlen(TEXT_STRING);
+		if (mod > 0) {
+			for (size_t i = 0; i < count; i++) {
+				comment[ofs + i] = TEXT_STRING[i % mod];
+			}
+		}
+	}
+	if (commentPad >= strlen(mhtmlFooterStart) + strlen(mhtmlFooterEnd)) {
+		memcpy(comment + commentPad - strlen(mhtmlFooterEnd), mhtmlFooterEnd, strlen(mhtmlFooterEnd));
+	}
+
+	unsigned char *header = (unsigned char *)malloc(strlen(mhtmlHeader) + 512);
+	if (header == NULL) { perror("ERROR: Problem allocating header buffer"); return NULL; }
+	*outHeaderSize = sprintf((char *)header, mhtmlHeader, contentsLength);
 	return header;
 }
 
@@ -821,6 +961,13 @@ int process(const char *inputFile, const char *outputFile, HeaderMode mode, size
 	{
 		header = generateWav(contentsLength + commentPad, &headerSize);
 	}
+	else if (mode == MODE_EML) {
+		const char *footer = NULL;
+		header = generateEml(contentsLength, &headerSize, comment, commentPad);
+	}
+	else if (mode == MODE_MHTML) {
+		header = generateMhtml(contentsLength, &headerSize, comment, commentPad);
+	}
 	else if (mode == MODE_HTML) {
 		header = generateHtml(contentsLength + commentPad, &headerSize);
 	}
@@ -829,7 +976,7 @@ int process(const char *inputFile, const char *outputFile, HeaderMode mode, size
 		const char *data; // = "\x1A";	// DOS EOF
 		data = HEADER_STRING;
 		header = (unsigned char *)strdup(data);
-		for (unsigned char *p = header; *p != 0; p++) *p &= 0x7f;	// clear top bit to allow easier control codes
+		for (unsigned char *p = header; *p != 0; p++) *p &= 0x7f;	// clear top bit to allow easier control codes from source
 		headerSize = strlen((char *)header);
 	}
 	else if (mode == MODE_BYTE)
@@ -837,7 +984,7 @@ int process(const char *inputFile, const char *outputFile, HeaderMode mode, size
 		const char *data; // = "\x1A";	// DOS EOF
 		data = HEADER_STRING;
 		header = (unsigned char *)strdup(data);
-		for (unsigned char *p = header; *p != 0; p++) *p &= 0x7f;	// clear top bit to allow easier control codes
+		for (unsigned char *p = header; *p != 0; p++) *p &= 0x7f;	// clear top bit to allow easier control codes from source
 		headerSize = strlen((char *)header);
 	}
 	else  // mode == MODE_NONE
@@ -934,6 +1081,8 @@ int run(int argc, char *argv[])
 		else if (!strcmp(argv[i], "-mode:none")) { mode = MODE_NONE; }
 		else if (!strcmp(argv[i], "-mode:bmp")) { mode = MODE_BMP; }
 		else if (!strcmp(argv[i], "-mode:wav")) { mode = MODE_WAV; }
+		else if (!strcmp(argv[i], "-mode:eml")) { mode = MODE_EML; }
+		else if (!strcmp(argv[i], "-mode:mhtml")) { mode = MODE_MHTML; }
 		else if (!strcmp(argv[i], "-mode:html")) { mode = MODE_HTML; }
 		else if (!strcmp(argv[i], "-mode:standard")) { mode = MODE_STANDARD; }
 		else if (!strcmp(argv[i], "-mode:byte")) { mode = MODE_BYTE; }
@@ -967,7 +1116,7 @@ int run(int argc, char *argv[])
 
 	if (help)
 	{
-		printf("Usage: zippast <file.{zip|*}> [-zip:<convert|keep>] [-mode:<standard|byte|none|bmp|wav|html>] [-comment <size=8171>] [-out <file.{bin|dat|bmp|wav|html}>]\n");
+		printf("Usage: zippast <file.{zip|*}> [-zip:<convert|keep>] [-mode:<standard|byte|none|bmp|wav>] [-comment <size=8171>] [-out <file.{bin|dat|bmp|wav|html}>]\n");
 		return 1;
 	}
 
@@ -977,6 +1126,8 @@ int run(int argc, char *argv[])
 		const char *newExt;
 		if (mode == MODE_BMP) newExt = ".bmp";
 		else if (mode == MODE_WAV) newExt = ".wav";
+		else if (mode == MODE_EML) newExt = ".eml";
+		else if (mode == MODE_MHTML) newExt = ".mht";
 		else if (mode == MODE_HTML) newExt = ".html";
 		else if (mode == MODE_STANDARD) newExt = ".zip-email";
 		else if (mode == MODE_BYTE) newExt = ".bin";

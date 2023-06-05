@@ -32,8 +32,18 @@ zippast inputfile
 
 ...where the input file can be a `.zip` (it will be `.zip` stored if it's not already a `.zip` file), and the output file is of the same name with the extension `.zip-email`. The recipient must typically rename the file extension to `.zip` to access the contents as before.
 
-Use the flag `-mode:bmp` to create a valid (but nonsense) bitmap image.  
+Other output formats are supported:
 
-Use the flag `-mode:wav` to create a valid (but nonsense) wave audio file.
+* `-mode:bmp` to create a valid (but nonsense) bitmap image.  
+
+* `-mode:wav` to create a valid (but nonsense) wave audio file.
+
+<!--
+* `-mode:mhtml` (experimental) to create a MHTML document.
+
+* `-mode:eml` (experimental) to create an email file.
+
+* `-mode:html` (experimental) to create an HTML file.
+-->
 
 Use the option `-out output.ext` to override the output file name.
